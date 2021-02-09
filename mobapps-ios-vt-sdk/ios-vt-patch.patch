@@ -1,0 +1,174 @@
+diff --git a/.gitignore b/.gitignore
+index a492bc873..6506350ff 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -18,6 +18,9 @@
+ #
+ #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+ 
++# Ignore Mac junk
++.DS_Store
++
+ # Ignore output dirs
+ /release
+ resource/release
+diff --git a/SConstruct b/SConstruct
+index 0da7e319c..9b0e98205 100644
+--- a/SConstruct
++++ b/SConstruct
+@@ -71,17 +71,17 @@ if (env.get('BUILD_JAVA') and env.get('JAVA_HOME')) or target_os == 'android':
+     java_build = SConscript(build_dir + 'java/SConscript')
+ 
+ # Build 'service' sub-project
+-service_build = SConscript(build_dir + 'service/SConscript')
++# service_build = SConscript(build_dir + 'service/SConscript')
+ 
+ if java_build:
+     Depends(service_build, java_build)
+ 
+ # Build other sub-projects
+-SConscript(dirs=[
+-    build_dir + 'cloud',
+-    build_dir + 'plugins',
+-    build_dir + 'bridging',
+-])
++#SConscript(dirs=[
++#    build_dir + 'cloud',
++#    build_dir + 'plugins',
++#    build_dir + 'bridging',
++#])
+ 
+ # Append target information to the help information (if needed)
+ # To see help info, execute:
+diff --git a/auto_build.py b/auto_build.py
+index 56e54f8df..67a94ccae 100755
+--- a/auto_build.py
++++ b/auto_build.py
+@@ -425,25 +425,27 @@ def build_tizen_unsecured(flag, extra_option_str):
+ 
+ # Mac OS and iOS
+ def build_darwin(flag, extra_option_str):
+-    print ("*********** Build for OSX *************")
+-    build_options = {
+-                        'TARGET_OS':'darwin',
+-                        'SYS_VERSION':'10.9',
+-                        'RELEASE':flag,
+-                    }
+-    call_scons(build_options, extra_option_str)
++#   print ("*********** Build for OSX *************")
++#    build_options = {
++#                        'TARGET_OS':'darwin',
++#                        'SYS_VERSION':'10.9',
++#                        'RELEASE':flag,
++#                    }
++#    call_scons(build_options, extra_option_str)
+ 
+-    print ("*********** Build for IOS i386 *************")
++    print ("*********** Build for IOS x86_64 *************")
+     build_options = {
+                         'TARGET_OS':'ios',
+-                        'TARGET_ARCH':'i386',
+-                        'SYS_VERSION':'7.0',
++                        'TARGET_ARCH':'x86_64',
++                        'TARGET_TRANSPORT':'IP',
++                        'SYS_VERSION':'10.0',
++                        'LOGGING':False,
+                         'RELEASE':flag,
+                     }
+     call_scons(build_options, extra_option_str)
+ 
+-    print ("*********** Build for IOS x86_64 *************")
+-    build_options['TARGET_ARCH'] = 'x86_64'
++    print ("*********** Build for IOS i386 *************")
++    build_options['TARGET_ARCH'] = 'i386'
+     call_scons(build_options, extra_option_str)
+ 
+     print ("*********** Build for IOS armv7 *************")
+diff --git a/build_common/darwin/SConscript b/build_common/darwin/SConscript
+index ab65efc52..0bb5c92bc 100644
+--- a/build_common/darwin/SConscript
++++ b/build_common/darwin/SConscript
+@@ -96,13 +96,13 @@ Help(help_vars.GenerateHelpText(env))
+ sys_version = env.get('SYS_VERSION')
+ if sys_version is None:
+     sys_version = maxsdk
++    env['SYS_VERSION'] = sys_version  # for the benefit of ../ios/SConscript
+ elif StrictVersion(sys_version) > StrictVersion(maxsdk):
+     msg = "\nError: target version %s cannot be satisfied\n" % sys_version
+     msg += "max installed SDK version is %s\n" % maxsdk
+     Exit(msg)
+ elif sys_version not in sdks:
+     sys_version = maxsdk
+-env['SYS_VERSION'] = sys_version  # for the benefit of ../ios/SConscript
+ 
+ if env.get('RELEASE'):
+     env.AppendUnique(CCFLAGS=['-Os'])
+diff --git a/iotivity.pc.in b/iotivity.pc.in
+index d3d88a1bd..403842f6c 100644
+--- a/iotivity.pc.in
++++ b/iotivity.pc.in
+@@ -11,16 +11,9 @@ Description: IoTivity is an open source reference implementation of the OIC stan
+ Version: @VERSION@
+ URL: https://www.iotivity.org
+ Requires:
+-Libs: -L${libdir} -loc -loc_logger -loc_logger_core -loctbstack -lconnectivity_abstraction @LIBS@
++Libs: -L${libdir} -loc -loctbstack @LIBS@
+ Cflags: -I${includedir}/resource \
+ 			-I${includedir}/resource/stack \
+ 			-I${includedir}/resource/oc_logger \
+-			-I${includedir}/c_common \
+-			-I${svcincludedir}/easy-setup \
+-			-I${svcincludedir}/notification \
+-			-I${svcincludedir}/resource-encapsulation \
+-			-I${svcincludedir}/resource-container \
+-			-I${svcincludedir}/resource-hosting \
+-			-I${svcincludedir}/resource-directory \
+-			-I${svcincludedir}/things-manager \
++			-I${includedir}/c_common
+ 			@DEFINES@
+diff --git a/resource/SConscript b/resource/SConscript
+index 3ec59999c..415068c26 100644
+--- a/resource/SConscript
++++ b/resource/SConscript
+@@ -39,7 +39,7 @@ SConscript('#extlibs/libcoap/SConscript')
+ # Build csdk
+ SConscript('csdk/SConscript')
+ 
+-if target_os not in ['arduino', 'darwin', 'ios']:
++if target_os not in ['arduino', 'darwin']:
+     # Build liboc_logger
+     SConscript('oc_logger/SConscript')
+ 
+diff --git a/resource/csdk/stack/SConscript b/resource/csdk/stack/SConscript
+index e027f27b6..f5816be1c 100644
+--- a/resource/csdk/stack/SConscript
++++ b/resource/csdk/stack/SConscript
+@@ -264,8 +264,9 @@ if target_os not in ['arduino', 'darwin', 'ios']:
+     shared_liboctbstack = liboctbstack_env.SharedLibrary(
+         'octbstack', liboctbstack_src)
+     octbstack_libs += Flatten(shared_liboctbstack)
+-    liboctbstack_env.UserInstallTargetHeader('include/ocstack.h', 'resource/stack', 'ocstack.h')
+-    liboctbstack_env.UserInstallTargetHeader('include/ocpresence.h', 'resource/stack', 'ocpresence.h')
++
++liboctbstack_env.UserInstallTargetHeader('include/ocstack.h', 'resource/stack', 'ocstack.h')
++liboctbstack_env.UserInstallTargetHeader('include/ocpresence.h', 'resource/stack', 'ocpresence.h')
+ 
+ if target_os not in ['windows', 'msys_nt']:
+     static_liboctbstack = liboctbstack_env.StaticLibrary(
+diff --git a/resource/third_party_libs.scons b/resource/third_party_libs.scons
+index ab5519cb1..e4bc9731d 100644
+--- a/resource/third_party_libs.scons
++++ b/resource/third_party_libs.scons
+@@ -72,8 +72,10 @@ elif target_os in ['windows']:
+     boost_path = os.path.join(src_dir, 'extlibs', 'boost', 'boost')
+     lib_env.AppendUnique(CPPPATH=[boost_path])
+ elif target_os == 'ios':
+-    lib_env.AppendUnique(FRAMEWORKPATH=[src_dir + '/extlibs/boost/ios/framework'])
+-    lib_env.AppendUnique(FRAMEWORKS=['boost'])
++ #   lib_env.AppendUnique(FRAMEWORKPATH=[src_dir + '/extlibs/boost/ios/framework'])
++ #   lib_env.AppendUnique(FRAMEWORKS=['boost'])
++    lib_env.AppendUnique(CPPPATH=['/usr/local/include'])
++    lib_env.AppendUnique(LIBPATH=['/usr/local/lib'])
+ elif target_os == 'darwin':
+     lib_env.AppendUnique(CPPPATH=['/usr/local/include'])
+     lib_env.AppendUnique(LIBPATH=['/usr/local/lib'])
